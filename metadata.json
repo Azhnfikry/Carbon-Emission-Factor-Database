@@ -1,0 +1,5 @@
+{
+  "name": "Carbon Emission Factor Explorer",
+  "description": "A comprehensive database and search tool for greenhouse gas emission factors across Scope 1, 2, 3, and Offsets.",
+  "requestFramePermissions": []
+}
