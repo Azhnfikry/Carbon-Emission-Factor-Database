@@ -4,7 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import swaggerJsdoc from "swagger-jsdoc";
 import swaggerUi from "swagger-ui-express";
-import { emissionFactors } from "./src/data/emissionFactors.ts";
+import { getEmissionFactors, getFactorById, searchFactors, filterFactors } from "./src/lib/supabase.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -109,24 +109,26 @@ async function startServer() {
    *       401:
    *         description: Unauthorized
    */
-  app.get("/api/factors", (req, res) => {
+  app.get("/api/factors", async (req, res) => {
     const { scope, section } = req.query;
     
-    let filtered = [...emissionFactors];
-    
-    if (scope) {
-      filtered = filtered.filter(f => f.scope.toLowerCase() === (scope as string).toLowerCase());
+    try {
+      let filtered = await filterFactors(
+        scope as string | undefined,
+        section as string | undefined
+      );
+      
+      res.json({
+        success: true,
+        data: filtered,
+        count: filtered.length
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch emission factors"
+      });
     }
-    
-    if (section) {
-      filtered = filtered.filter(f => f.section.toLowerCase().includes((section as string).toLowerCase()));
-    }
-    
-    res.json({
-      success: true,
-      data: filtered,
-      count: filtered.length
-    });
   });
 
   /**
@@ -152,12 +154,19 @@ async function startServer() {
    *       401:
    *         description: Unauthorized
    */
-  app.get("/api/factors/:id", (req, res) => {
-    const factor = emissionFactors.find(f => f.id === req.params.id);
-    if (factor) {
-      res.json({ success: true, data: factor });
-    } else {
-      res.status(404).json({ success: false, error: "Factor not found" });
+  app.get("/api/factors/:id", async (req, res) => {
+    try {
+      const factor = await getFactorById(req.params.id);
+      if (factor) {
+        res.json({ success: true, data: factor });
+      } else {
+        res.status(404).json({ success: false, error: "Factor not found" });
+      }
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch emission factor"
+      });
     }
   });
 
@@ -183,8 +192,8 @@ async function startServer() {
    *       401:
    *         description: Unauthorized
    */
-  app.get("/api/factors/search", (req, res) => {
-    const query = (req.query.q as string)?.toLowerCase() || "";
+  app.get("/api/factors/search", async (req, res) => {
+    const query = (req.query.q as string) || "";
     
     if (!query) {
       return res.status(400).json({ 
@@ -193,17 +202,21 @@ async function startServer() {
       });
     }
 
-    const results = emissionFactors.filter(f => 
-      f.type.toLowerCase().includes(query) ||
-      f.section.toLowerCase().includes(query)
-    );
+    try {
+      const results = await searchFactors(query);
 
-    res.json({
-      success: true,
-      query,
-      data: results,
-      count: results.length
-    });
+      res.json({
+        success: true,
+        query,
+        data: results,
+        count: results.length
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        error: "Failed to search emission factors"
+      });
+    }
   });
 
   /**
@@ -242,7 +255,7 @@ async function startServer() {
    *       401:
    *         description: Unauthorized
    */
-  app.post("/api/emissions/calculate", (req, res) => {
+  app.post("/api/emissions/calculate", async (req, res) => {
     const { activity_value, emission_factor_id } = req.body;
 
     if (!activity_value || !emission_factor_id) {
@@ -252,37 +265,44 @@ async function startServer() {
       });
     }
 
-    const factor = emissionFactors.find(f => f.id === emission_factor_id);
-    
-    if (!factor) {
-      return res.status(404).json({
+    try {
+      const factor = await getFactorById(emission_factor_id);
+      
+      if (!factor) {
+        return res.status(404).json({
+          success: false,
+          error: "Emission factor not found"
+        });
+      }
+
+      const co2e = Number(factor.co2e);
+      const result = activity_value * co2e;
+
+      res.json({
+        success: true,
+        data: {
+          activity_value,
+          activity_unit: factor.unit,
+          emission_factor: {
+            id: factor.id,
+            type: factor.type,
+            co2e: co2e,
+            unit: factor.unit
+          },
+          result: {
+            co2e_kg: result,
+            co2_kg: activity_value * Number(factor.co2 || 0),
+            ch4_kg: activity_value * Number(factor.ch4 || 0),
+            n2o_kg: activity_value * Number(factor.no2 || 0)
+          }
+        }
+      });
+    } catch (error) {
+      res.status(500).json({
         success: false,
-        error: "Emission factor not found"
+        error: "Failed to calculate emissions"
       });
     }
-
-    const co2e = Number(factor.co2e);
-    const result = activity_value * co2e;
-
-    res.json({
-      success: true,
-      data: {
-        activity_value,
-        activity_unit: factor.unit,
-        emission_factor: {
-          id: factor.id,
-          type: factor.type,
-          co2e: co2e,
-          unit: factor.unit
-        },
-        result: {
-          co2e_kg: result,
-          co2_kg: activity_value * Number(factor.co2 || 0),
-          ch4_kg: activity_value * Number(factor.ch4 || 0),
-          n2o_kg: activity_value * Number(factor.no2 || 0)
-        }
-      }
-    });
   });
 
   // Vite middleware for development
