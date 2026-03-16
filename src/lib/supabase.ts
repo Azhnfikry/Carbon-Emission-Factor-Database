@@ -3,11 +3,13 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.SUPABASE_URL || "";
 const supabaseKey = process.env.SUPABASE_KEY || "";
 
-if (!supabaseUrl || !supabaseKey) {
-  console.warn("Supabase credentials not configured. API will use fallback data.");
-}
+let supabase: any = null;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+if (supabaseUrl && supabaseKey) {
+  supabase = createClient(supabaseUrl, supabaseKey);
+} else {
+  console.warn("⚠️  Supabase credentials not configured. Database queries will fail.");
+}
 
 export interface EmissionFactor {
   id: string;
@@ -27,6 +29,11 @@ export interface EmissionFactor {
 
 // Fetch all factors from Supabase
 export async function getEmissionFactors() {
+  if (!supabase) {
+    console.error("Supabase not configured");
+    return [];
+  }
+
   try {
     const { data, error } = await supabase
       .from("emission_factors")
@@ -46,6 +53,11 @@ export async function getEmissionFactors() {
 
 // Get factor by ID
 export async function getFactorById(id: string) {
+  if (!supabase) {
+    console.error("Supabase not configured");
+    return null;
+  }
+
   try {
     const { data, error } = await supabase
       .from("emission_factors")
@@ -67,6 +79,11 @@ export async function getFactorById(id: string) {
 
 // Search factors
 export async function searchFactors(query: string) {
+  if (!supabase) {
+    console.error("Supabase not configured");
+    return [];
+  }
+
   try {
     const { data, error } = await supabase
       .from("emission_factors")
@@ -87,6 +104,11 @@ export async function searchFactors(query: string) {
 
 // Filter by scope and section
 export async function filterFactors(scope?: string, section?: string) {
+  if (!supabase) {
+    console.error("Supabase not configured");
+    return [];
+  }
+
   try {
     let query = supabase.from("emission_factors").select("*");
 
